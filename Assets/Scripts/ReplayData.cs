@@ -23,7 +23,17 @@ namespace  evolis3d.SystemReplay
             private BinaryReader binaryReader = null;
         #endregion
         
-        private Dictionary<string, Transform> Actors;
+        //private Dictionary<string, Transform> Actors; //WIP
+        private List<Transform> Actors;
+        
+        #region deadzones y delay time
+            private float _deadzoneOffset;
+            public float DeadzoneOffset
+            {
+                get => _deadzoneOffset;
+                set => _deadzoneOffset = value;
+            }
+        #endregion
 
         private ReplayModeEnum _replayMode;
         public ReplayModeEnum ReplayMode
@@ -65,7 +75,8 @@ namespace  evolis3d.SystemReplay
 
         private void Awake()
         {
-            Actors = new Dictionary<string, Transform>();
+            //Actors = new Dictionary<string, Transform>();
+            Actors = new List<Transform>();
             
             //no sé si ésto va aquí...
             memoryStream = new MemoryStream();
@@ -80,7 +91,10 @@ namespace  evolis3d.SystemReplay
         {
             memoryStream.SetLength(0);
             memoryStream.Seek(0, SeekOrigin.Begin);
-            binaryWriter.Seek(0, SeekOrigin.Begin);            
+            binaryWriter.Seek(0, SeekOrigin.Begin);
+            
+            RecordingStarted?.Invoke();
+            print("Recoding started at: " + Time.time);
         }
 
         /// <summary>
@@ -89,20 +103,45 @@ namespace  evolis3d.SystemReplay
         private void InitReplaying()
         {
             memoryStream.Seek(0, SeekOrigin.Begin);
+            
+            PlaybackStarted?.Invoke();
+            print("Playback started at: " + Time.time);
         }
         
         /// <summary>
         /// Writes the transform on the memoryStream, I think...
         /// </summary>
         /// <param name="transform"></param>
-        private void SaveTransform(string tagname, Transform transform)
+        private void SaveTransform(string tagname, Transform transf)
         {
             binaryWriter.Write(tagname);
-            binaryWriter.Write(transform.localPosition.x);
-            binaryWriter.Write(transform.localPosition.y);
-            binaryWriter.Write(transform.localPosition.z);
+            binaryWriter.Write(transf.localPosition.x);
+            binaryWriter.Write(transf.localPosition.y);
+            binaryWriter.Write(transf.localPosition.z);
         }
 
+        private void SaveTransform(Transform transf)
+        {
+            binaryWriter.Write(transf.localPosition.x);
+            binaryWriter.Write(transf.localPosition.y);
+            binaryWriter.Write(transf.localPosition.z);
+        }
+
+        /// <summary>
+        /// Reads from the memoryStream and assigns to a Transform
+        /// </summary>
+        /// <param name="transf"></param>
+        private void LoadTransform(Transform transf)
+        {
+           
+            //aqui tiene que ir algun filtro o algo... WIP
+            string tagname = binaryReader.ReadString();
+            float x = binaryReader.ReadSingle();
+            float y = binaryReader.ReadSingle();
+            float z = binaryReader.ReadSingle();
+            transf.localPosition = new Vector3(x, y, z);
+        }
+        
         /// <summary>
         /// AQUI VA LO GORDO!! Checks the current ReplayMode and records or playbacks to/from the memoryStream.
         /// </summary>
@@ -112,20 +151,56 @@ namespace  evolis3d.SystemReplay
             {
                 foreach (var item in Actors)
                 {
-                   SaveTransform(item.Key, item.Value); 
+                   //SaveTransform(item.Key, item.Value);
+                   SaveTransform(item);
                 }
             }
             else if(ReplayMode == ReplayModeEnum.Playing)
             {
-                //asignar y reproducir cada uno...
+                if (memoryStream.Position >= memoryStream.Length)
+                {
+                    StopReplaying();
+                    //return;
+                }
+                else
+                {
+                    //asignar y reproducir cada uno...WIP
+                    foreach (var item in Actors)
+                    {
+                        LoadTransform(item);
+                    }
+                    
+                }
             }
         }
 
+        private void StopReplaying()
+        {
+            //AQUI TODAVIA NO VA NADA, PERO DEBERIA IR ALGO!!!
+            PlaybackStopped?.Invoke();
+            print("Playback ended at: "+ Time.time);
+        }
 
+
+        /// <summary>
+        /// Reduces the amount of stored data by checking the current min distance offset deadzone.
+        /// </summary>
         private void TrimList()
+        {
+            Transform lastTransf;
+            
+            //TODO: limpiar items de la lista que tengan muy poca diferencia en valores.
+
+            foreach (var item in Actors)
             {
-                //TODO: limpiar items de la lista que tengan muy poca diferencia en valores.
+                if (item == Actors[0]) continue;
+                
+                lastTransf = item;
             }
+            print("Data trimmed succesfully."); 
+        }
+        
+        
         
        
         #endregion
@@ -146,11 +221,12 @@ namespace  evolis3d.SystemReplay
                 
                 if (Actors.Count == 0) return null;
                 
-                var isTemp = Actors.TryGetValue(tagname, out temp);
-               
+                //var isTemp = Actors.TryGetValue(tagname, out temp);
+                temp = this.transform; //WIP I KNOW!!!
                 return temp;
             }
-            
+
+      
             /// <summary>
             /// Stores a Transform to the internal list, for later use in the Replay System.
             /// You may want to store an item based on its Tag or GameObject's name...
@@ -161,7 +237,8 @@ namespace  evolis3d.SystemReplay
             {
                 if (string.IsNullOrEmpty(tagname) || transformData == null) return;
                 
-                Actors.Add(tagname,transformData);
+                //Actors.Add(tagname,transformData);
+                Actors.Add(transformData);
             }
             
         #endregion
